@@ -1,0 +1,166 @@
+Lab 1 - Reflection
+Student Name: Youssef Adel - SE2
+
+================================================================
+PART A: VMs vs Containers - Resource Comparison
+================================================================
+
+Setup:
+A Docker Ubuntu container was launched using:
+  docker run -it --name test-container ubuntu /bin/bash
+
+Resource usage was measured inside the container using free -h,
+ps aux, and df -h, then compared with the host Ubuntu VM.
+
+Results:
+------------------------------------------------------------------
+Metric              | Ubuntu VM (VirtualBox) | Docker Container
+------------------------------------------------------------------
+Startup time        | ~30-60 seconds         | ~3 seconds
+Running processes   | 200+ (full Ubuntu)     | 2 (bash + ps)
+Memory used         | ~1.2 GB                | ~50 MB (shared)
+Disk layout         | Full filesystem        | Simple overlay
+------------------------------------------------------------------
+
+Analysis:
+The container had only 2 running processes compared to the VM's
+200+ background services. This demonstrates the core advantage of
+containers: isolated, minimal environments that only run what the
+application needs. VMs carry significant OS overhead because they
+boot a full operating system with all background services.
+Containers skip this by sharing the host OS kernel.
+
+================================================================
+PART B: Virtualization Detection (Same concept as AWS EC2 Nitro)
+================================================================
+
+Commands Run:
+  sudo dmidecode | grep -A3 "System Information"
+  dmesg | grep -i nitro
+
+Results:
+  dmidecode output:
+    System Information
+        Manufacturer: innotek GmbH
+        Product Name: VirtualBox
+        Version: 1.2
+
+  dmesg output:
+    dmesg: read kernel buffer failed: Operation not permitted
+
+Analysis:
+The dmidecode command confirmed the hypervisor is VISIBLE at the
+hardware description level (Manufacturer: innotek GmbH, VirtualBox).
+However, dmesg was BLOCKED with Operation not permitted, demonstrating
+that while the hypervisor can be identified, low-level kernel buffer
+access is restricted for security.
+
+This mirrors exactly what happens on AWS EC2 with Nitro:
+- dmidecode shows: Manufacturer: Amazon EC2
+- dmesg is blocked: same Operation not permitted error
+The hypervisor is transparent enough to identify but locked down
+enough to prevent tampering - this IS the Nitro security model.
+
+Key Insight: AWS Nitro offloads networking, storage I/O, and security
+monitoring to dedicated hardware cards, freeing the host CPU entirely
+for the guest VM. This improves performance, security via hardware
+enforced isolation, and reliability since each component fails
+independently.
+
+================================================================
+PART C: Tail Latency Simulation Results
+================================================================
+
+Flask App used exponential delay: random.expovariate(1/0.1)
+Benchmark command: ab -n 100 -c 10 http://localhost:5000/
+
+--- Native Flask (with exponential delay) ---
+Requests per second:  63.66
+Mean time per request: 157.083 ms
+50%:   83 ms
+66%:  121 ms
+75%:  164 ms
+80%:  208 ms
+90%:  240 ms
+95%:  414 ms
+99%:  671 ms
+100%: 671 ms (longest)
+Failed requests: 0
+
+--- Docker Flask (with exponential delay) ---
+Requests per second:  61.23
+Mean time per request: 163.323 ms
+50%:   63 ms
+66%:  106 ms
+75%:  144 ms
+80%:  165 ms
+90%:  218 ms
+95%:  271 ms
+99%:  613 ms
+100%: 613 ms (longest)
+Failed requests: 0
+
+--- Simple Benchmark (No Artificial Delay) ---
+Native:  673.49 req/sec | 14.848ms mean | p99: 25ms | longest: 38ms
+Docker:  579.67 req/sec | 17.251ms mean | p99: 28ms | longest: 36ms
+
+Tail Latency Analysis:
+- The median p50 was 83ms - most requests are fast
+- The p99 reached 671ms - nearly 8x the median
+- Docker p99 was 613ms - slightly better than native
+- This gap between median and tail IS tail latency behavior
+- In distributed systems with 10 parallel sub-calls, even a small
+  percentage of slow responses dominates total response time
+- This is why Google and large-scale systems invest in techniques
+  like hedged requests and load balancing to reduce tail latency
+
+================================================================
+DELIVERABLE 3: Which architecture is better for microservices?
+================================================================
+
+Containers are significantly better for microservices because:
+
+1. Startup time: Containers start in seconds vs 30-60s for VMs.
+   Microservices need to scale up and down rapidly.
+
+2. Resource efficiency: A container runs with only 2 processes vs
+   a VM's 200+. In a microservices system with dozens of services,
+   this difference multiplies dramatically.
+
+3. Isolation per service: Each microservice can be packaged in its
+   own container with exact dependencies, avoiding version conflicts
+   between services.
+
+4. Orchestration: Tools like Kubernetes are built around containers,
+   enabling automatic scaling, health checks, and rolling deployments
+   that would be far heavier with VMs.
+
+VMs are still preferred when strong security isolation is needed
+such as multi-tenant environments, or when running services that
+require a different OS kernel than the host.
+
+================================================================
+DISCUSSION QUESTIONS
+================================================================
+
+Q: Why does AWS split Nitro into hardware components?
+A: By offloading networking, storage I/O, and security monitoring
+to dedicated hardware cards, AWS frees the host CPU entirely for
+the guest VM workload. This improves performance with no hypervisor
+tax on CPU, security via hardware enforced isolation, and reliability
+since each component fails independently.
+
+Q: In which scenarios would you use VMs over containers?
+A: VMs are preferred when strong security isolation is required
+between different tenants, when the workload needs a different OS
+kernel than the host, when compliance regulations require full OS
+separation, or when running legacy applications that assume full
+OS ownership.
+
+Q: How does tail latency change with number of parallel calls?
+A: Tail latency gets significantly worse with fan-out. If a request
+depends on N parallel sub-calls, the total latency is the maximum
+of all N responses. With p99 at 671ms, a request fanning out to
+just 5 services has roughly a 5% chance of hitting the tail,
+making the user-perceived p99 much higher than any single
+service p99.
