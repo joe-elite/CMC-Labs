@@ -1,0 +1,115 @@
+Task 1: Redis Replication and CAP Theorem
+Student: Youssef Adel - SE2
+==========================================
+
+STEP 1: Start all containers
+------------------------------
+Command:
+  docker compose up -d
+
+Output:
+  [+] up 3/3
+  Container lab_02-redis-node2-1  Running
+  Container lab_02-etcd-1         Running
+  Container lab_02-redis-node1-1  Running
+
+STEP 2: Write a key to Node 1
+------------------------------
+Command:
+  docker exec -it lab_02-redis-node1-1 redis-cli SET mykey "Hello from node1"
+
+Output:
+  OK
+
+STEP 3: Read the key from Node 1
+----------------------------------
+Command:
+  docker exec -it lab_02-redis-node1-1 redis-cli GET mykey
+
+Output:
+  "Hello from node1"
+
+STEP 4: Try to read the same key from Node 2
+----------------------------------------------
+Command:
+  docker exec -it lab_02-redis-node2-1 redis-cli GET mykey
+
+Output:
+  (nil)
+
+Observation:
+  Node 2 has no knowledge of the key written to Node 1.
+  No replication exists between standalone Redis nodes.
+
+STEP 5: Write more keys to Node 1
+-----------------------------------
+Command:
+  docker exec -it lab_02-redis-node1-1 redis-cli SET name "Youssef"
+  docker exec -it lab_02-redis-node1-1 redis-cli SET lab "CMC-Lab2"
+
+Output:
+  OK
+  OK
+
+STEP 6: List all keys on Node 1
+---------------------------------
+Command:
+  docker exec -it lab_02-redis-node1-1 redis-cli KEYS "*"
+
+Output:
+  1) "mykey"
+  2) "partition_test"
+  3) "lab"
+  4) "name"
+
+STEP 7: List all keys on Node 2
+---------------------------------
+Command:
+  docker exec -it lab_02-redis-node2-1 redis-cli KEYS "*"
+
+Output:
+  (empty array)
+
+Observation:
+  Node 1 has 4 keys. Node 2 has zero.
+  This confirms there is no synchronization between the nodes.
+
+STEP 8: Simulate network partition - Stop Node 2
+--------------------------------------------------
+Command:
+  docker stop lab_02-redis-node2-1
+
+Output:
+  lab_02-redis-node2-1
+
+STEP 9: Write to Node 1 during partition
+------------------------------------------
+Command:
+  docker exec -it lab_02-redis-node1-1 redis-cli SET partition_test "still works"
+
+Output:
+  OK
+
+Observation:
+  Node 1 continued accepting writes with no issues.
+  This is AP behavior - Availability is maintained during partition.
+
+STEP 10: Restore Node 2
+-------------------------
+Command:
+  docker start lab_02-redis-node2-1
+
+Output:
+  lab_02-redis-node2-1
+
+STEP 11: Check Node 2 after restart
+-------------------------------------
+Command:
+  docker exec -it lab_02-redis-node2-1 redis-cli GET mykey
+
+Output:
+  (nil)
+
+Observation:
+  Node 2 came back with no data from Node 1.
+  No automatic sync or catchup occurred after restart.

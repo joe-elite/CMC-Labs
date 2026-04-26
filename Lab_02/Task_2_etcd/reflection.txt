@@ -1,0 +1,107 @@
+Task 2 Reflection: Raft Consensus with etcd
+Student: Youssef Adel - SE2
+============================================
+
+OBSERVATIONS
+============
+
+1. etcdctl put foo bar returned OK immediately.
+   - etcd accepted the write through the Raft leader.
+   - Strong consistency confirmed from the first operation.
+
+2. etcdctl get foo returned:
+   foo
+   bar
+   - The read matched the write exactly.
+   - No delay or inconsistency observed.
+
+3. etcdctl endpoint status showed:
+   - Endpoint: 127.0.0.1:2379
+   - Node ID: 9324a99282752a09
+   - Version: 3.5.5
+   - DB Size: 20 kB
+   - Is Leader: true
+   - Raft Index: 8, Raft Term: 3
+   - This node is the sole leader of the cluster.
+
+4. After stopping etcd:
+   - The container stopped completely.
+   - No operations possible with no leader available.
+   - This is CP behavior: consistency over availability.
+
+5. After restarting etcd:
+   - etcdctl get foo still returned: foo / bar
+   - All data persisted across the restart.
+   - Raft log on disk ensures nothing is ever lost.
+
+CAP THEOREM ANALYSIS
+====================
+
+etcd using Raft consensus is a CP system:
+
+- C (Consistency):
+  All reads and writes go through the elected leader.
+  Every read reflects the most recent committed write.
+  No stale data is ever returned.
+
+- P (Partition Tolerance):
+  Raft uses majority quorum to handle partitions.
+  In a 3-node cluster, 1 failure is tolerated.
+  In our single-node setup, any failure = full outage.
+
+- A (Availability):
+  SACRIFICED when the leader is unavailable.
+  The system refuses requests rather than serving
+  potentially inconsistent data.
+
+HOW RAFT WORKS
+==============
+
+1. One node is elected as Leader via voting.
+2. All writes go exclusively to the Leader.
+3. Leader replicates the entry to all Followers.
+4. Write is committed only when majority acknowledges.
+5. If leader fails, a new election is triggered.
+6. New leader is chosen from nodes with most up-to-date log.
+
+In our single-node setup:
+- The one node is both leader and only member.
+- Stopping it causes complete unavailability.
+- In a 3-node cluster, 1 node failure still allows operation.
+
+REDIS vs ETCD COMPARISON
+=========================
+
+Property         | Redis (default)     | etcd (Raft)
+-----------------|---------------------|-----------------------
+CAP Type         | AP                  | CP
+Consistency      | Eventual (none)     | Strong
+Availability     | Always available    | Needs majority
+Data Sync        | None (standalone)   | Automatic via Raft
+Failure Impact   | Per node only       | Full if no quorum
+Best Use Case    | Cache, sessions     | Config, service discovery
+
+ANSWERS TO LAB QUESTIONS
+=========================
+
+Q: What did etcdctl endpoint status show?
+A: It showed the endpoint URL (127.0.0.1:2379), node ID
+   (9324a99282752a09), version (3.5.5), DB size (20 kB),
+   leader status (true), Raft index (8) and Raft term (3).
+   This confirms the node is actively serving as cluster leader.
+
+Q: What happened after stopping etcd?
+A: The container stopped completely and no operations were
+   possible. This is CP behavior - the system chose to become
+   fully unavailable rather than risk serving inconsistent data.
+
+Q: What happened after restarting?
+A: All data was fully restored. etcd persists its Raft log to
+   disk so all committed entries survive restarts perfectly.
+
+Q: How does Raft ensure consensus?
+A: Raft elects one leader that handles all writes. Followers
+   replicate the leader log. A write is only committed when
+   a majority of nodes acknowledge it. If the leader fails,
+   a new election ensures the cluster continues operating as
+   long as a majority of nodes remain available.

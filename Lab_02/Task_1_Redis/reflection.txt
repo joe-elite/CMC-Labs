@@ -1,0 +1,65 @@
+Task 1 Reflection: Redis Replication and CAP Theorem
+Student: Youssef Adel - SE2
+=====================================================
+
+OBSERVATIONS
+============
+
+1. Writing "Hello from node1" to Node 1 succeeded immediately (OK).
+
+2. Reading the same key from Node 2 returned (nil).
+   - The two Redis nodes are completely independent.
+   - There is no automatic replication between standalone nodes.
+
+3. Node 1 had 4 keys: mykey, partition_test, lab, name.
+   Node 2 had 0 keys: (empty array).
+   - Clear proof of zero synchronization between nodes.
+
+4. During partition (Node 2 stopped):
+   - Node 1 continued accepting writes normally.
+   - SET partition_test returned OK with no errors.
+   - The system stayed available despite the partition.
+
+5. After Node 2 restarted:
+   - GET mykey on Node 2 still returned (nil).
+   - No catchup or sync happened automatically.
+   - Each node remained completely isolated.
+
+CAP THEOREM ANALYSIS
+====================
+
+Redis in this default standalone setup is an AP system:
+
+- A (Availability):
+  Node 1 stayed fully available during Node 2 outage.
+  All reads and writes were served without interruption.
+
+- P (Partition Tolerance):
+  The system survived the simulated network partition.
+  Node 1 continued operating independently.
+
+- C (Consistency):
+  SACRIFICED. The two nodes had completely different data.
+  Node 2 never received any of the keys written to Node 1.
+
+In the CAP theorem you can only guarantee two out of three.
+Redis chose Availability and Partition Tolerance over Consistency.
+
+ANSWERS TO LAB QUESTIONS
+=========================
+
+Q: What happened when you wrote to Node 1 and read from Node 2?
+A: The read returned (nil). The nodes are independent with no
+   replication configured. Node 2 had no knowledge of any write
+   that happened on Node 1.
+
+Q: How were writes affected during the partition?
+A: Writes to Node 1 were completely unaffected. Node 1 continued
+   operating normally, confirming Redis prioritizes availability
+   over consistency during a partition.
+
+Q: What does this demonstrate about CAP theorem?
+A: It demonstrates that Redis in default mode is an AP system.
+   It sacrifices consistency to remain available during partitions.
+   This makes Redis ideal for caching and session storage where
+   temporary inconsistency is acceptable.

@@ -1,0 +1,75 @@
+Task 2: Raft Consensus with etcd
+Student: Youssef Adel - SE2
+=================================
+
+STEP 1: Write a key-value pair to etcd
+----------------------------------------
+Command:
+  docker exec -it lab_02-etcd-1 etcdctl put foo bar
+
+Output:
+  OK
+
+STEP 2: Read the value back
+-----------------------------
+Command:
+  docker exec -it lab_02-etcd-1 etcdctl get foo
+
+Output:
+  foo
+  bar
+
+Observation:
+  etcd immediately confirmed the write and returned
+  the correct value. This is strong consistency behavior.
+
+STEP 3: Check cluster status and leader
+-----------------------------------------
+Command:
+  docker exec -it lab_02-etcd-1 etcdctl endpoint status
+
+Output:
+  127.0.0.1:2379, 9324a99282752a09, 3.5.5, 20 kB, true, false, 3, 8, 8,
+
+Key observations:
+  - Endpoint: 127.0.0.1:2379
+  - Node ID: 9324a99282752a09
+  - Version: 3.5.5
+  - DB Size: 20 kB
+  - IS LEADER: true
+  - Raft Index: 8
+  - Raft Term: 3
+
+STEP 4: Stop etcd to simulate unavailability
+---------------------------------------------
+Command:
+  docker stop lab_02-etcd-1
+
+Output:
+  lab_02-etcd-1
+
+Observation:
+  The container stopped completely.
+  No leader = no service available (CP behavior).
+
+STEP 5: Restart etcd
+----------------------
+Command:
+  docker start lab_02-etcd-1
+
+Output:
+  lab_02-etcd-1
+
+STEP 6: Verify data persisted after restart
+--------------------------------------------
+Command:
+  docker exec -it lab_02-etcd-1 etcdctl get foo
+
+Output:
+  foo
+  bar
+
+Observation:
+  All data survived the restart completely intact.
+  etcd persists its Raft log to disk ensuring durability.
+  This confirms Raft guarantees data is never lost.
