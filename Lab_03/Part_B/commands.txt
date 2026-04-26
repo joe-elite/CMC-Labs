@@ -1,0 +1,93 @@
+Part B: Docker Image Layering
+Student: Youssef Adel - SE2
+==============================
+
+TASK B1: Create application files
+-----------------------------------
+Files created:
+  - requirements.txt (flask==3.0.0)
+  - app.py (Flask app with / and /health routes)
+
+TASK B2: Build the basic image
+--------------------------------
+Command:
+  docker build -f Dockerfile.basic -t lab3-basic .
+
+Output:
+  [+] Building 16.3s (10/10) FINISHED
+  => [1/5] FROM docker.io/library/python:3.12-slim
+  => [2/5] WORKDIR /app
+  => [3/5] COPY requirements.txt .
+  => [4/5] RUN pip install -r requirements.txt
+  => [5/5] COPY app.py .
+  => exporting to image
+  => naming to docker.io/library/lab3-basic:latest
+
+Command:
+  docker history lab3-basic
+
+Output:
+  IMAGE          CREATED        CREATED BY                          SIZE
+  37df48bf104a   1 min ago      CMD ["python" "app.py"]             0B
+  <missing>      1 min ago      EXPOSE [5000/tcp]                   0B
+  <missing>      1 min ago      COPY app.py . # buildkit            12.3kB
+  <missing>      1 min ago      RUN pip install -r requirements.txt 16.5MB
+  <missing>      1 min ago      COPY requirements.txt .             12.3kB
+  <missing>      1 min ago      WORKDIR /app                        8.19kB
+  <missing>      4 days ago     CMD ["python3"]                     0B
+  <missing>      4 days ago     RUN set -eux; for src in idle3...   16.4kB
+  <missing>      4 days ago     RUN set -eux; savedAptMark=...      41.3MB
+  <missing>      5 days ago     debian.sh --arch amd64              87.4MB
+
+Observation:
+  pip install layer added 16.5MB to the image.
+  All application dependencies are baked into one layer.
+
+TASK B3: Build the multistage image
+-------------------------------------
+Command:
+  docker build -f Dockerfile.multistage -t lab3-multi .
+
+Output:
+  [+] Building 10.0s (12/12) FINISHED
+  => [builder 1/4] FROM docker.io/library/python:3.12-slim  CACHED
+  => [builder 2/4] WORKDIR /build
+  => [builder 3/4] COPY requirements.txt .
+  => [builder 4/4] RUN pip install --prefix=/install -r requirements.txt
+  => [stage-1 3/4] COPY --from=builder /install /usr/local
+  => [stage-1 4/4] COPY app.py .
+  => naming to docker.io/library/lab3-multi:latest
+
+Command:
+  docker history lab3-multi
+
+Output:
+  IMAGE          CREATED        CREATED BY                          SIZE
+  d66f9b5dc98d   34 sec ago     CMD ["python" "app.py"]             0B
+  <missing>      34 sec ago     EXPOSE [5000/tcp]                   0B
+  <missing>      34 sec ago     COPY app.py . # buildkit            12.3kB
+  <missing>      34 sec ago     COPY /install /usr/local # buildkit 5.51MB
+  <missing>      1 min ago      WORKDIR /app                        8.19kB
+  <missing>      4 days ago     CMD ["python3"]                     0B
+  <missing>      4 days ago     RUN set -eux; for src in idle3...   16.4kB
+  <missing>      4 days ago     RUN set -eux; savedAptMark=...      41.3MB
+  <missing>      5 days ago     debian.sh --arch amd64              87.4MB
+
+Observation:
+  COPY --from=builder layer is only 5.51MB vs 16.5MB in basic.
+  The builder stage is completely discarded from final image.
+  Only the compiled packages are copied, not the build tools.
+
+IMAGE SIZE COMPARISON
+----------------------
+Command:
+  docker image ls | grep lab3
+
+Output:
+  lab3-basic   latest   37df48bf104a   199MB
+  lab3-multi   latest   d66f9b5dc98d   184MB
+
+Result:
+  lab3-basic:  199MB
+  lab3-multi:  184MB
+  Difference:  15MB saved with multistage build

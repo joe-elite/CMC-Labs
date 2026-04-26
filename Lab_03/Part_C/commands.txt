@@ -1,0 +1,116 @@
+Part C: Local Kubernetes Orchestration with kind
+Student: Youssef Adel - SE2
+=================================================
+
+TASK C1: Create a local cluster
+---------------------------------
+Command:
+  kind create cluster --name lab3-cluster
+
+Output:
+  Creating cluster "lab3-cluster" ...
+  ✓ Ensuring node image (kindest/node:v1.30.0)
+  ✓ Preparing nodes
+  ✓ Writing configuration
+  ✓ Starting control-plane
+  ✓ Installing CNI
+  ✓ Installing StorageClass
+  Set kubectl context to "kind-lab3-cluster"
+
+Command:
+  kubectl cluster-info
+
+Output:
+  Kubernetes control plane is running at https://127.0.0.1:39599
+  CoreDNS is running at https://127.0.0.1:39599/api/v1/namespaces/
+  kube-system/services/kube-dns:dns/proxy
+
+Command:
+  kubectl get nodes -o wide
+
+Output:
+  NAME                         STATUS  ROLES          AGE  VERSION
+  lab3-cluster-control-plane   Ready   control-plane  34s  v1.30.0
+  INTERNAL-IP: 172.19.0.2
+  OS: Debian GNU/Linux 12 (bookworm)
+  CONTAINER-RUNTIME: containerd://1.7.15
+
+TASK C2: Load images into kind
+--------------------------------
+Command:
+  kind load docker-image lab3-basic --name lab3-cluster
+
+Output:
+  Image "lab3-basic" with ID "sha256:37df48bf104a..."
+  not yet present on node "lab3-cluster-control-plane", loading...
+
+Command:
+  kind load docker-image lab3-multi --name lab3-cluster
+
+Output:
+  Image "lab3-multi" with ID "sha256:d66f9b5dc98d..."
+  not yet present on node "lab3-cluster-control-plane", loading...
+
+TASK C3: Deploy a replicated application
+------------------------------------------
+Command:
+  kubectl apply -f deployment.yaml
+
+Output:
+  deployment.apps/lab3-web created
+
+Command:
+  kubectl apply -f service.yaml
+
+Output:
+  service/lab3-web-svc created
+
+Command:
+  kubectl get pods -o wide
+
+Output:
+  NAME                      READY STATUS  RESTARTS AGE  IP
+  lab3-web-5d56ff7f5b-5692s 1/1   Running 0        8s   10.244.0.6
+  lab3-web-5d56ff7f5b-6mmrv 1/1   Running 0        8s   10.244.0.7
+  lab3-web-5d56ff7f5b-htfhv 1/1   Running 0        8s   10.244.0.5
+  All 3 pods on: lab3-cluster-control-plane
+
+Command:
+  kubectl get deployments
+
+Output:
+  NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+  lab3-web   3/3     3            3           35s
+
+Command:
+  kubectl describe deployment lab3-web
+
+Output (key fields):
+  Name:       lab3-web
+  Replicas:   3 desired | 3 updated | 3 total | 3 available
+  Image:      lab3-multi
+  Strategy:   RollingUpdate (25% max unavailable, 25% max surge)
+  Events:
+    Scaled up replica set lab3-web-5d56ff7f5b to 3
+
+TASK C4: Access the service
+-----------------------------
+Command:
+  kubectl port-forward service/lab3-web-svc 8080:80
+
+Command:
+  curl http://localhost:8080/
+
+Output:
+  Hello from Lab 3
+
+Command:
+  curl http://localhost:8080/health
+
+Output:
+  ok
+
+Observation:
+  Both endpoints responded correctly.
+  Traffic was forwarded from port 8080 to the service
+  which load balanced across all 3 running pods.

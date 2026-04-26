@@ -1,0 +1,71 @@
+Part D Reflection: Scheduling and Placement
+Student: Youssef Adel - SE2
+============================================
+
+OBSERVATIONS
+============
+
+1. Node labeling worked instantly:
+   - kubectl label added node-role=general to the node
+   - Label appeared immediately in kubectl get nodes --show-labels
+   - Labels are simple key-value pairs attached to any resource
+
+2. Adding nodeSelector triggered a rolling update:
+   - Old pods (5d56ff7f5b) began terminating gracefully
+   - New pods (c457fd886) started immediately with nodeSelector
+   - Kubernetes maintained availability during the update
+   - All new pods were correctly placed on the labeled node
+
+3. Rolling update behavior:
+   - Kubernetes did not delete all pods at once
+   - It replaced them gradually (RollingUpdate strategy)
+   - 25% max unavailable means at most 1 pod down at a time
+   - This ensures zero downtime during configuration changes
+
+ANSWERS TO LAB QUESTIONS
+=========================
+
+Q: Why is nodeSelector different from hard-coding a machine
+   name in traditional deployment models?
+A: In traditional deployments, you specify exact machine names
+   or IP addresses (e.g. "deploy to server-12 at 192.168.1.5").
+   This creates tight coupling between the application and
+   specific hardware. If that machine fails or is replaced,
+   the deployment breaks and must be manually updated.
+   With nodeSelector, you declare a REQUIREMENT not a location.
+   You say "run on any node labeled node-role=general" instead
+   of "run on server-12". Kubernetes finds a matching node
+   automatically. If that node fails, pods can be rescheduled
+   on any other node with the same label automatically.
+
+Q: How does declarative scheduling improve resilience and
+   maintainability?
+A: Declarative scheduling separates WHAT from WHERE.
+   You describe the requirements of your workload and
+   Kubernetes handles placement decisions. This improves:
+
+   Resilience: If a node fails, the scheduler can place
+   pods on other nodes with matching labels automatically
+   without any manual intervention.
+
+   Maintainability: Adding a new node and giving it the
+   right labels is enough to make it eligible for workloads.
+   No deployment scripts need to be updated.
+
+   Portability: The same deployment.yaml works in any
+   cluster as long as nodes have the right labels. You
+   do not need to know the actual hostnames or IPs.
+
+   Scalability: Adding capacity is as simple as adding
+   labeled nodes. The scheduler distributes workloads
+   across all eligible nodes automatically.
+
+KEY TAKEAWAY
+============
+
+Kubernetes scheduling is label-based and declarative.
+This decouples applications from specific machines making
+the system resilient to hardware failures, easy to scale,
+and simple to maintain. This is fundamentally different
+from traditional ops where applications are tied to
+specific servers by name or IP address.

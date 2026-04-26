@@ -1,0 +1,59 @@
+Part A Reflection: Containers, Namespaces, and Cgroups
+Student: Youssef Adel - SE2
+=======================================================
+
+OBSERVATIONS
+============
+
+1. Namespaces isolate what a process can see:
+   - The container had its own hostname (0e8154a8e216)
+     which was different from the host machine hostname.
+   - Inside the container ps -ef showed only 2 processes.
+     On the host, hundreds of processes are visible.
+   - bash inside the container appeared as PID 1.
+     The same bash process on the host was PID 22342.
+   - The mount namespace showed overlay filesystem as root
+     instead of the host's real filesystem.
+   - The cgroup file showed 0::/ meaning the container
+     has its own isolated cgroup hierarchy.
+
+2. Cgroups control how much resources a process can use:
+   - CPU was hard capped at 50% even though stress tried
+     to use 2 full CPUs (200%).
+   - Memory was hard capped at 256MiB even though stress
+     tried to allocate 220MiB of VM memory.
+   - Docker stats confirmed both limits were enforced.
+
+ANSWERS TO LAB QUESTIONS
+=========================
+
+Q: Why does the container think its main process is PID 1
+   while the host sees a different PID?
+A: Linux PID namespaces give each container its own isolated
+   process ID space starting from 1. The container only sees
+   processes inside its own namespace. The host sees ALL
+   processes across all namespaces with their real global PIDs.
+   This is why bash appears as PID 1 inside the container
+   but as PID 22342 on the host - same process, two different
+   namespace views.
+
+Q: How do cgroups complement namespaces?
+A: Namespaces and cgroups solve different problems together.
+   Namespaces isolate VISIBILITY - a container cannot see
+   processes, files, or network interfaces outside its namespace.
+   Cgroups isolate RESOURCES - a container cannot consume more
+   CPU, memory, or I/O than its configured limits allow.
+   Without namespaces, containers would see each other's processes.
+   Without cgroups, one container could starve all others of CPU
+   or memory. A container runtime combines both mechanisms to
+   produce a fully isolated and fairly scheduled execution unit.
+
+KEY TAKEAWAY
+============
+
+Containers are not virtual machines. They are ordinary Linux
+processes running with two kernel features applied:
+- Namespaces: control what the process can see
+- Cgroups: control how much the process can use
+This is why containers start in milliseconds compared to VMs
+which need to boot an entire operating system.

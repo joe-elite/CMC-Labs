@@ -1,0 +1,104 @@
+Part A: Containers, Namespaces, and Cgroups
+Student: Youssef Adel - SE2
+============================================
+
+TASK A1: Start an interactive container
+----------------------------------------
+Command:
+  docker run --rm -it --name nsdemo ubuntu:22.04 bash
+
+Output:
+  Unable to find image 'ubuntu:22.04' locally
+  22.04: Pulling from library/ubuntu
+  Digest: sha256:962f6cadeae0ea6284001009daa4cc9a8c37e75d1f5191cf0eb83fe565b63dd7
+  Status: Downloaded newer image for ubuntu:22.04
+  root@0e8154a8e216:/#
+
+Inside container - hostname:
+  Command: hostname
+  Output:  0e8154a8e216
+
+Inside container - ps -ef:
+  Command: ps -ef
+  Output:
+    UID   PID  PPID  C STIME TTY  TIME     CMD
+    root    1     0  0 17:38 pts/0 00:00:00 bash
+    root   10     1  0 17:39 pts/0 00:00:00 ps -ef
+
+  Observation:
+    Only 2 processes visible inside the container.
+    bash is PID 1 - the container thinks it is the init process.
+
+Inside container - ip addr:
+  Command: ip addr
+  Output:  bash: ip: command not found
+  Note:    ip tools not installed in minimal ubuntu image.
+           Network namespace isolation still exists.
+
+Inside container - mount | head:
+  Command: mount | head
+  Output:
+    overlay on / type overlay (rw,relatime,lowerdir=...)
+    proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+    tmpfs on /dev type tmpfs (rw,nosuid,size=65536k,mode=755)
+    devpts on /dev/pts type devpts (rw,nosuid,noexec,relatime)
+    sysfs on /sys type sysfs (ro,nosuid,nodev,noexec,relatime)
+    cgroup on /sys/fs/cgroup type cgroup2 (ro,nosuid,nodev)
+    mqueue on /dev/mqueue type mqueue (rw,nosuid,nodev)
+    shm on /dev/shm type tmpfs (rw,nosuid,nodev,noexec)
+    /dev/sda2 on /etc/resolv.conf type ext4 (rw,relatime)
+    /dev/sda2 on /etc/hostname type ext4 (rw,relatime)
+
+  Observation:
+    Root filesystem is overlay (layered Docker filesystem).
+    Container has its own isolated mount namespace.
+
+Inside container - cat /proc/1/cgroup:
+  Command: cat /proc/1/cgroup
+  Output:  0::/
+
+  Observation:
+    cgroup v2 in use. Container process is in its own cgroup.
+
+----------------------------------------
+TASK A2: Compare host and container PIDs
+----------------------------------------
+Command on host:
+  docker ps
+  docker inspect nsdemo --format "{{.State.Pid}}"
+
+Output:
+  Container ID: 0e8154a8e216
+  Host PID of container main process: 22342
+
+Command on host:
+  ps -fp 22342
+
+Output:
+  UID        PID   PPID  C STIME TTY    TIME CMD
+  root     22342  22319  0 17:38 pts/0  00:00:00 bash
+
+Observation:
+  Inside container: bash is PID 1
+  On host:          same bash process is PID 22342
+  This proves PID namespace isolation is working.
+  The container has its own PID namespace starting from 1.
+
+----------------------------------------
+TASK A3: Resource limits with cgroups
+----------------------------------------
+Command:
+  docker run --rm -it --cpus="0.5" --memory="256m" ubuntu:22.04 bash
+
+Inside container:
+  apt-get update && apt-get install -y stress
+  stress --cpu 2 --vm 1 --vm-bytes 220M --timeout 30
+
+Docker stats observed during stress test:
+  CONTAINER ID   NAME           CPU %    MEM USAGE / LIMIT    MEM %
+  981233cb3f08   thirsty_wiles  50.18%   223.3MiB / 256MiB   87.22%
+
+Observation:
+  CPU capped at exactly 50% (0.5 CPUs as configured).
+  Memory usage hit 223.3MiB but hard limited at 256MiB.
+  cgroups enforced both limits perfectly.

@@ -1,0 +1,73 @@
+Part B Reflection: Docker Image Layering
+Student: Youssef Adel - SE2
+=========================================
+
+OBSERVATIONS
+============
+
+1. Basic image (lab3-basic): 199MB
+   - pip install layer added 16.5MB
+   - All build tools and pip cache included in final image
+   - Every layer from the build process is kept
+
+2. Multistage image (lab3-multi): 184MB
+   - COPY --from=builder layer is only 5.51MB
+   - Builder stage is completely discarded
+   - Only the compiled packages are copied to final image
+   - 15MB smaller than the basic image
+
+3. Layer caching behavior:
+   - requirements.txt is copied before app.py intentionally
+   - If only app.py changes, pip install layer is reused from cache
+   - If requirements.txt changes, pip install runs again
+   - This ordering saves significant build time in development
+
+IMAGE COMPARISON TABLE
+======================
+
+Property          | lab3-basic        | lab3-multi
+------------------|-------------------|------------------
+Final Size        | 199MB             | 184MB
+pip layer size    | 16.5MB            | 5.51MB (copied)
+Build stages      | 1                 | 2 (builder + final)
+Build tools kept  | Yes               | No
+Cache efficiency  | Good              | Good
+Security surface  | Larger            | Smaller
+
+ANSWERS TO LAB QUESTIONS
+=========================
+
+Q: Which image is smaller?
+A: lab3-multi is smaller at 184MB vs lab3-basic at 199MB.
+   The multistage build saved 15MB by discarding the builder
+   stage and only copying the compiled packages into the
+   final image. In larger projects the difference can be
+   hundreds of megabytes.
+
+Q: Which steps are cached if only app.py changes?
+A: If only app.py changes, Docker reuses the cached layers
+   for WORKDIR, COPY requirements.txt, and RUN pip install.
+   Only the final COPY app.py layer is rebuilt. This is why
+   we copy requirements.txt before app.py in the Dockerfile.
+   Layer order directly controls cache efficiency.
+
+Q: Why does layer order matter?
+A: Docker builds images layer by layer and caches each one.
+   When a layer changes, all layers after it are invalidated
+   and must be rebuilt. By placing frequently changing files
+   (like app.py) after rarely changing files (like
+   requirements.txt), we maximize cache reuse and minimize
+   build time. Putting COPY app.py before pip install would
+   force pip to reinstall all packages every time app.py
+   changes, wasting time and bandwidth.
+
+KEY TAKEAWAY
+============
+
+Docker image layering is not just about organization.
+It directly affects build speed through caching, final
+image size through multistage builds, and security through
+minimizing what is included in the production image.
+In large-scale orchestration where images are pulled across
+many nodes, a smaller image means faster deployments and
+lower bandwidth costs across the entire cluster.

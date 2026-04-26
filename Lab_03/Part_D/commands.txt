@@ -1,0 +1,64 @@
+Part D: Scheduling and Placement
+Student: Youssef Adel - SE2
+==================================
+
+TASK D1: Label the node
+-------------------------
+Command:
+  kubectl label nodes --all node-role=general
+
+Output:
+  node/lab3-cluster-control-plane labeled
+
+Command:
+  kubectl get nodes --show-labels
+
+Output:
+  NAME                         STATUS  ROLES         AGE    VERSION
+  lab3-cluster-control-plane   Ready   control-plane 5m16s  v1.30.0
+
+  Labels:
+    beta.kubernetes.io/arch=amd64
+    beta.kubernetes.io/os=linux
+    kubernetes.io/arch=amd64
+    kubernetes.io/hostname=lab3-cluster-control-plane
+    kubernetes.io/os=linux
+    node-role.kubernetes.io/control-plane=
+    node-role=general
+
+  Observation:
+    node-role=general label successfully added to the node.
+    This label will be used by the nodeSelector in the deployment.
+
+TASK D2: Force placement with nodeSelector
+--------------------------------------------
+Updated deployment.yaml to add nodeSelector under spec.template.spec:
+
+  nodeSelector:
+    node-role: general
+
+Command:
+  kubectl apply -f deployment.yaml
+
+Output:
+  deployment.apps/lab3-web configured
+
+Command:
+  kubectl get pods -o wide
+
+Output:
+  NAME                      READY  STATUS       RESTARTS AGE
+  lab3-web-5d56ff7f5b-5692s 1/1    Terminating  0        4m33s
+  lab3-web-5d56ff7f5b-6mmrv 1/1    Terminating  0        4m33s
+  lab3-web-5d56ff7f5b-htfhv 1/1    Terminating  0        4m33s
+  lab3-web-c457fd886-8tj4b  1/1    Running      0        2s
+  lab3-web-c457fd886-cdw7m  1/1    Running      0        4s
+  lab3-web-c457fd886-gbt5w  1/1    Running      0        3s
+  All new pods on: lab3-cluster-control-plane
+
+  Observation:
+    Kubernetes performed a rolling update automatically.
+    Old pods (5d56ff7f5b) terminated gracefully.
+    New pods (c457fd886) started with nodeSelector applied.
+    All new pods scheduled on node with node-role=general label.
+    Zero downtime during the update.

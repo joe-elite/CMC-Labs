@@ -1,0 +1,110 @@
+Part E: Self-Healing and Health Probes
+Student: Youssef Adel - SE2
+========================================
+
+TASK E1: Trigger self-healing by deleting a Pod
+-------------------------------------------------
+Command:
+  kubectl get pods
+
+Output:
+  NAME                       READY   STATUS    RESTARTS   AGE
+  lab3-web-c457fd886-8tj4b   1/1     Running   0          71s
+  lab3-web-c457fd886-cdw7m   1/1     Running   0          73s
+  lab3-web-c457fd886-gbt5w   1/1     Running   0          72s
+
+Command:
+  kubectl delete pod lab3-web-c457fd886-8tj4b
+
+Output:
+  pod "lab3-web-c457fd886-8tj4b" deleted from default namespace
+
+Command:
+  kubectl get pods -w
+
+Output:
+  NAME                       READY  STATUS       RESTARTS AGE
+  lab3-web-c457fd886-8tj4b   1/1    Terminating  0        92s
+  lab3-web-c457fd886-cdw7m   1/1    Running      0        94s
+  lab3-web-c457fd886-gbt5w   1/1    Running      0        93s
+  lab3-web-c457fd886-qmnc2   1/1    Running      0        6s
+
+  lab3-web-c457fd886-8tj4b   0/1    Terminating  0        117s
+  lab3-web-c457fd886-8tj4b   0/1    Terminating  0        117s
+  lab3-web-c457fd886-8tj4b   0/1    Terminating  0        117s
+
+Observation:
+  Deleted pod: lab3-web-c457fd886-8tj4b (Terminating)
+  New replacement pod: lab3-web-c457fd886-qmnc2 (Running, 6s old)
+  Kubernetes created a replacement pod automatically and
+  immediately without any manual intervention.
+  The deployment maintained 3 running replicas at all times.
+
+TASK E2: Add readiness and liveness probes
+--------------------------------------------
+Command:
+  kubectl apply -f probe-deployment.yaml
+
+Output:
+  deployment.apps/lab3-web-probe created
+
+Command:
+  kubectl get pods
+
+Output:
+  NAME                              READY   STATUS    RESTARTS   AGE
+  lab3-web-c457fd886-cdw7m          1/1     Running   0          4m14s
+  lab3-web-c457fd886-gbt5w          1/1     Running   0          4m13s
+  lab3-web-c457fd886-qmnc2          1/1     Running   0          2m46s
+  lab3-web-probe-5db74dcbc7-6drv7   1/1     Running   0          5s
+  lab3-web-probe-5db74dcbc7-qdzdx   1/1     Running   0          5s
+
+Command:
+  kubectl describe pod lab3-web-probe-5db74dcbc7-6drv7
+
+Output (key fields):
+  Name:     lab3-web-probe-5db74dcbc7-6drv7
+  Status:   Running
+  IP:       10.244.0.12
+
+  Liveness:   http-get http://:5000/health
+              delay=10s timeout=1s period=10s
+              success=1 failure=3
+
+  Readiness:  http-get http://:5000/health
+              delay=3s timeout=1s period=5s
+              success=1 failure=3
+
+  Events:
+    Scheduled: Successfully assigned to lab3-cluster-control-plane
+    Pulled:    Container image "lab3-multi" already present
+    Created:   Created container web
+    Started:   Started container web
+
+Observation:
+  Both probes configured and active.
+  Readiness probe starts after 3s and checks every 5s.
+  Liveness probe starts after 10s and checks every 10s.
+  Both hit the /health endpoint which returns "ok".
+
+TASK E3: Observe container process restart
+-------------------------------------------
+Command:
+  kubectl exec -it lab3-web-probe-5db74dcbc7-6drv7 -- /bin/sh -c "kill 1"
+
+Observation:
+  The python:3.12-slim image does not include ps command.
+  kill -9 1 on PID 1 inside a container is blocked by the
+  kernel as a security measure to prevent accidental
+  container termination from within.
+
+  The liveness probe is the correct mechanism to trigger
+  a container restart in Kubernetes. If the /health endpoint
+  stops responding, Kubernetes will automatically restart
+  the container after 3 consecutive failures (30 seconds).
+
+  This is the intended self-healing behavior:
+  - Liveness probe fails 3 times
+  - Kubernetes restarts the container in place
+  - RESTARTS counter increments by 1
+  - Same pod, new container process

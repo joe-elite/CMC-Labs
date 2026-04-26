@@ -1,0 +1,90 @@
+Part E Reflection: Self-Healing and Health Probes
+Student: Youssef Adel - SE2
+==================================================
+
+OBSERVATIONS
+============
+
+1. Pod deletion triggered immediate replacement:
+   - Deleting lab3-web-c457fd886-8tj4b caused it to terminate
+   - A new pod lab3-web-c457fd886-qmnc2 appeared within 6 seconds
+   - The deployment maintained exactly 3 running replicas
+   - No manual intervention was needed at any point
+
+2. Probes were configured and verified:
+   - Readiness probe: HTTP GET /health, delay 3s, period 5s
+   - Liveness probe: HTTP GET /health, delay 10s, period 10s
+   - Both probes showed as active in kubectl describe pod
+   - The /health endpoint returned "ok" keeping pods healthy
+
+3. kill -9 1 behavior:
+   - The kernel blocks SIGKILL on PID 1 inside containers
+   - This is a Linux security feature to prevent accidental
+     termination of the container init process from within
+   - The liveness probe is the correct Kubernetes mechanism
+     for detecting and recovering from process failures
+
+ANSWERS TO LAB QUESTIONS
+=========================
+
+Q: Why is this called reconciliation rather than simple
+   restart logic?
+A: Simple restart logic (like systemd or supervisord) only
+   restarts a process on the same machine when it crashes.
+   Kubernetes reconciliation is fundamentally different.
+   The Deployment controller continuously compares the
+   DESIRED state (3 replicas) with the ACTUAL state
+   (2 running after deletion). When it detects a difference
+   it takes action to reconcile them by creating a new pod.
+   This works across the entire cluster not just one machine.
+   If a whole node fails, pods are reconciled onto other nodes.
+   It is a control loop not a simple restart script.
+
+Q: Did Kubernetes restart the container in place or create
+   a brand-new Pod?
+A: Kubernetes created a brand-new Pod with a new name
+   (lab3-web-c457fd886-qmnc2) to replace the deleted one
+   (lab3-web-c457fd886-8tj4b). This is different from an
+   in-place container restart. A new Pod means a new
+   container, new IP address, and fresh process state.
+   In contrast, when a liveness probe fails, Kubernetes
+   restarts the container WITHIN the same pod. The pod
+   name stays the same but the RESTARTS counter increments.
+   Pod deletion = new pod. Liveness failure = same pod,
+   new container.
+
+Q: Why are readiness probes and liveness probes not
+   interchangeable?
+A: They serve completely different purposes:
+
+   Readiness probe controls TRAFFIC ROUTING.
+   If readiness fails, the pod is removed from the service
+   endpoints and stops receiving traffic. The container
+   keeps running. This is used when a container needs time
+   to warm up or is temporarily busy. You do not want to
+   kill it, just stop sending traffic to it.
+
+   Liveness probe controls CONTAINER LIFECYCLE.
+   If liveness fails, Kubernetes kills and restarts the
+   container. This is used when a container is stuck in
+   a deadlock or unhealthy state that it cannot recover
+   from on its own.
+
+   Using liveness instead of readiness would kill containers
+   that just need more time to start up. Using readiness
+   instead of liveness would leave stuck containers running
+   forever just without traffic. Both are needed together
+   for robust self-healing behavior.
+
+KEY TAKEAWAY
+============
+
+Kubernetes self-healing operates at two levels:
+1. Pod level: The Deployment controller replaces deleted
+   or failed pods to maintain the desired replica count.
+2. Container level: Liveness probes detect stuck containers
+   and restart them within the same pod automatically.
+Readiness probes add a third layer by controlling which
+pods receive traffic based on their actual health status.
+Together these mechanisms eliminate the need for manual
+intervention in most failure scenarios.
