@@ -1,0 +1,127 @@
+Lab 04: Microservices and Cloud-Native Design
+Student: Youssef Adel - SE2
+==============================================
+
+PART A: Project Structure
+--------------------------
+Commands:
+  mkdir -p ~/CMC-Labs/Lab_04/week4-lab/product-service
+  mkdir -p ~/CMC-Labs/Lab_04/week4-lab/order-service
+
+Structure created:
+  week4-lab/
+  ├── docker-compose.yml
+  ├── product-service/
+  │   ├── app.py
+  │   ├── requirements.txt
+  │   └── Dockerfile
+  └── order-service/
+      ├── app.py
+      ├── requirements.txt
+      └── Dockerfile
+
+PART F: Build and Run
+----------------------
+Command:
+  docker compose up --build -d
+
+Output:
+  [+] Building 16.0s (20/20) FINISHED
+  ✔ Image week4-lab-order-service   Built
+  ✔ Image week4-lab-product-service Built
+  ✔ Network week4-lab_default       Created
+  ✔ Container product-service       Started
+  ✔ Container order-service         Started
+
+Command:
+  docker compose ps
+
+Output:
+  NAME             IMAGE                      STATUS
+  order-service    week4-lab-order-service    Up 54 seconds (healthy)
+  product-service  week4-lab-product-service  Up 54 seconds (healthy)
+
+  Both containers running and healthy on ports 5001 and 5002.
+
+PART G: Functional Testing
+---------------------------
+Command:
+  curl http://localhost:5001/health
+
+Output:
+  {"service":"product-service","status":"up"}
+
+Command:
+  curl http://localhost:5001/products/1
+
+Output:
+  {"id":1,"name":"Laptop","price":1200}
+
+Command:
+  curl http://localhost:5001/products/99
+
+Output:
+  {"error":"Product not found"}
+
+Command:
+  curl -X POST http://localhost:5002/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+
+Output:
+  {"message":"Order created","product":"Laptop","quantity":2,"total_price":2400}
+
+Observation:
+  product-service returned correct product data.
+  order-service successfully called product-service,
+  calculated total price (1200 x 2 = 2400) and returned
+  a complete order response.
+
+PART H: Failure Injection and Resilience
+------------------------------------------
+Command:
+  docker stop product-service
+
+Output:
+  product-service
+
+Command:
+  curl -X POST http://localhost:5002/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 2, "quantity": 1}'
+
+Output:
+  {"error":"product-service unavailable"}
+
+Observation:
+  order-service tried to contact product-service.
+  fetch_product() retried 2 times with 1 second delay.
+  After all retries exhausted, returned HTTP 503.
+  Service degraded gracefully instead of crashing.
+
+Command:
+  docker start product-service
+
+Output:
+  product-service
+
+Command:
+  docker compose ps
+
+Output:
+  NAME             STATUS
+  order-service    Up (healthy)
+  product-service  Up (health: starting) -> (healthy)
+
+Command:
+  curl -X POST http://localhost:5002/orders \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 2, "quantity": 1}'
+
+Output:
+  {"message":"Order created","product":"Phone","quantity":1,"total_price":650}
+
+Observation:
+  product-service recovered automatically after restart.
+  order-service resumed normal operation immediately.
+  No manual reconfiguration was needed.

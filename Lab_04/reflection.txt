@@ -1,0 +1,122 @@
+Lab 04 Reflection: Microservices and Cloud-Native Design
+Student: Youssef Adel - SE2
+=========================================================
+
+OBSERVATIONS
+============
+
+1. Service-to-service communication worked correctly:
+   - order-service called product-service via HTTP
+   - Product data was fetched, validated, and used to
+     calculate the total price automatically
+   - JSON was the exchange format between both services
+
+2. Environment variables used for configuration:
+   - PRODUCT_SERVICE_URL set in docker-compose.yml
+   - order-service reads it with os.getenv()
+   - No hardcoded IP addresses or ports in the code
+   - This follows 12-factor app principle III (Config)
+
+3. Health checks confirmed cloud-native behavior:
+   - Both services exposed /health endpoints
+   - Docker Compose used them to verify container health
+   - Both showed (healthy) status after startup
+
+4. Failure injection showed graceful degradation:
+   - Stopping product-service caused order-service to retry
+   - After 2 retries with 1 second delay, returned HTTP 503
+   - order-service did not crash or hang indefinitely
+   - Clear error message returned to the client
+
+5. Recovery was automatic:
+   - Restarting product-service restored full functionality
+   - order-service resumed normal operation immediately
+   - No manual reconfiguration was needed
+
+ARCHITECTURE REFLECTION QUESTIONS
+===================================
+
+Q: Which parts show the benefits of microservices over monolith?
+A: Several parts demonstrate clear microservice benefits:
+   - Independent deployment: each service has its own
+     Dockerfile and can be built and deployed separately
+     without affecting the other service.
+   - Technology independence: each service has its own
+     requirements.txt and could use different libraries
+     or even different languages in future.
+   - Isolated failure: when product-service stopped,
+     order-service stayed running and returned a graceful
+     error instead of the entire system crashing.
+   - Independent scaling: we could run multiple instances
+     of product-service behind a load balancer without
+     touching order-service at all.
+
+Q: Which new complexities were introduced by splitting
+   into two services?
+A: Microservices introduced several new complexities:
+   - Network dependency: order-service now depends on
+     a network call to product-service. Network calls
+     can fail, timeout, or be slow unlike in-process calls.
+   - Distributed failure handling: we had to implement
+     retry logic and timeout handling in fetch_product().
+     A monolith would not need this.
+   - Service discovery: we needed environment variables
+     and Docker network DNS to let order-service find
+     product-service by name.
+   - Operational overhead: two services to build, run,
+     monitor, and maintain instead of one.
+   - Debugging complexity: tracing a request across
+     two services is harder than debugging one process.
+
+Q: What would break if network latency increased or one
+   service became slow?
+A: The fetch_product() function has a 2 second timeout.
+   If product-service responds slower than 2 seconds,
+   the request will timeout and be retried up to 2 times.
+   Total wait time would be up to 6 seconds before the
+   client gets a 503 error. Under high load, slow responses
+   could cause order-service threads to pile up waiting
+   for timeouts, eventually exhausting available connections
+   and causing order-service itself to become slow or
+   unresponsive. This is called cascading failure and is
+   a key risk in synchronous microservice architectures.
+
+Q: Which 12-factor app principles are visible?
+A: Several 12-factor principles are demonstrated:
+
+   Factor III - Config:
+   PRODUCT_SERVICE_URL is stored in environment variables
+   not hardcoded in the source code. The same code works
+   in any environment by changing the environment variable.
+
+   Factor VI - Processes:
+   Both services are stateless processes. product-service
+   stores products in memory but does not write to disk.
+   order-service holds no state between requests.
+
+   Factor VII - Port Binding:
+   Both services expose themselves via port binding.
+   product-service binds to 5001, order-service to 5002.
+   They are self-contained and do not rely on a web server.
+
+   Factor IX - Disposability:
+   Both services start fast and stop cleanly. Docker
+   restart: unless-stopped ensures automatic recovery
+   after crashes supporting fast startup and graceful shutdown.
+
+   Factor X - Dev/Prod Parity:
+   Docker containers ensure the same environment runs
+   locally and in production with no configuration drift.
+
+KEY TAKEAWAY
+============
+
+This lab demonstrated that microservices are not just about
+splitting code into smaller pieces. They require careful
+design of network communication, failure handling, service
+discovery, and configuration management. The benefits of
+independent deployment and isolated failure are real but
+they come with significant operational complexity. Tools
+like Docker Compose locally and Kubernetes in production
+help manage this complexity through orchestration,
+health checks, restart policies, and service discovery.
