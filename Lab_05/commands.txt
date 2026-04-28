@@ -1,0 +1,170 @@
+Lab 05: Local Serverless Event-Driven Image Processing Pipeline
+Student: Youssef Adel - SE2
+================================================================
+
+SETUP: Create folder structure
+--------------------------------
+Commands:
+  mkdir -p ~/CMC-Labs/Lab_05/lecture5-local-serverless-lab/data/input
+  mkdir -p ~/CMC-Labs/Lab_05/lecture5-local-serverless-lab/data/output
+  mkdir -p ~/CMC-Labs/Lab_05/lecture5-local-serverless-lab/event_source
+  mkdir -p ~/CMC-Labs/Lab_05/lecture5-local-serverless-lab/router
+  mkdir -p ~/CMC-Labs/Lab_05/lecture5-local-serverless-lab/functions/image_resizer
+  mkdir -p ~/CMC-Labs/Lab_05/lecture5-local-serverless-lab/functions/notifier
+
+Files created:
+  lecture5-local-serverless-lab/
+  ├── docker-compose.yml
+  ├── data/
+  │   ├── input/
+  │   └── output/
+  ├── event_source/
+  │   ├── Dockerfile
+  │   ├── requirements.txt
+  │   └── watcher.py
+  ├── router/
+  │   ├── Dockerfile
+  │   ├── requirements.txt
+  │   └── event_router.py
+  └── functions/
+      ├── image_resizer/
+      │   ├── Dockerfile
+      │   ├── requirements.txt
+      │   └── app.py
+      └── notifier/
+          ├── Dockerfile
+          ├── requirements.txt
+          └── app.py
+
+STEP 1: Build and run all containers
+--------------------------------------
+Command:
+  docker compose up --build -d
+
+Output:
+  ✔ Image lecture5-local-serverless-lab-event-router  Built
+  ✔ Image lecture5-local-serverless-lab-event-source  Built
+  ✔ Image lecture5-local-serverless-lab-image-resizer Built
+  ✔ Image lecture5-local-serverless-lab-notifier      Built
+  ✔ Container lab5-redis          Started
+  ✔ Container lab5-image-resizer  Started
+  ✔ Container lab5-notifier       Started
+  ✔ Container lab5-event-source   Started
+  ✔ Container lab5-event-router   Started
+
+Command:
+  docker compose ps
+
+Output:
+  NAME                IMAGE                                       STATUS
+  lab5-event-router   lecture5-...-event-router                  Up 2 minutes
+  lab5-event-source   lecture5-...-event-source                  Up 2 minutes
+  lab5-image-resizer  lecture5-...-image-resizer                 Up 2 minutes
+  lab5-notifier       lecture5-...-notifier                      Up 2 minutes
+  lab5-redis          redis:7-alpine                             Up 4 minutes
+
+STEP 2: Create test image and trigger pipeline
+-----------------------------------------------
+Command:
+  docker compose exec image-resizer python3 -c "
+  from PIL import Image, ImageDraw
+  img = Image.new('RGB', (1200, 800), (240, 240, 240))
+  draw = ImageDraw.Draw(img)
+  draw.text((50, 50), 'Lecture 5 Local Serverless Lab', fill=(0, 0, 0))
+  draw.text((50, 100), 'Event-driven image processing pipeline', fill=(0, 0, 0))
+  img.save('/data/input/test_image.png')
+  print('Created /data/input/test_image.png')
+  "
+
+Output:
+  Created /data/input/test_image.png
+
+STEP 3: Check event source logs
+---------------------------------
+Command:
+  docker compose logs event-source
+
+Output:
+  lab5-event-source | Event Source started. Watching folder: /data/input
+  lab5-event-source | Published event: {
+  lab5-event-source |   "event_id": "0a9dca5a-5098-454c-92b5-8d7bf09f0a6f",
+  lab5-event-source |   "event_type": "image.uploaded",
+  lab5-event-source |   "file_name": "test_image.png",
+  lab5-event-source |   "file_path": "/data/input/test_image.png",
+  lab5-event-source |   "width": 300,
+  lab5-event-source |   "created_at": "2026-04-28T08:52:07.794322"
+  lab5-event-source | }
+
+STEP 4: Check event router logs
+---------------------------------
+Command:
+  docker compose logs event-router
+
+Output:
+  lab5-event-router | Event Router started. Waiting for events...
+  lab5-event-router | Received event: image.uploaded
+  lab5-event-router | {
+  lab5-event-router |   "event_id": "0a9dca5a-5098-454c-92b5-8d7bf09f0a6f",
+  lab5-event-router |   "event_type": "image.uploaded",
+  lab5-event-router |   "file_name": "test_image.png",
+  lab5-event-router |   "file_path": "/data/input/test_image.png",
+  lab5-event-router |   "width": 300,
+  lab5-event-router |   "created_at": "2026-04-28T08:52:07.794322"
+  lab5-event-router | }
+  lab5-event-router | Sent to http://image-resizer:5000/resize
+  lab5-event-router | Response code: 200
+  lab5-event-router | Duration: 39.27 ms
+  lab5-event-router | Response: {"function":"image-resizer","input_file":"test_image.png",
+                       "new_size":[300,200],"original_size":[1200,800],
+                       "output_file":"/data/output/resized_test_image.png",
+                       "processing_ms":32.96,"status":"success"}
+  lab5-event-router | Sent to http://notifier:5000/notify
+  lab5-event-router | Response code: 200
+  lab5-event-router | Duration: 5.42 ms
+  lab5-event-router | Response: {"event_type":"image.uploaded","file_name":"test_image.png",
+                       "function":"notifier","status":"notified",
+                       "timestamp":"2026-04-28T08:52:07.842153"}
+
+STEP 5: Test image-resizer function directly
+---------------------------------------------
+Command:
+  curl -X POST http://localhost:5001/resize \
+    -H "Content-Type: application/json" \
+    -d '{"file_path":"/data/input/test_image.png",
+         "file_name":"test_image.png","width":200}'
+
+Output:
+  {
+    "function": "image-resizer",
+    "input_file": "test_image.png",
+    "new_size": [200, 133],
+    "original_size": [1200, 800],
+    "output_file": "/data/output/resized_test_image.png",
+    "processing_ms": 20.0,
+    "status": "success"
+  }
+
+STEP 6: Cold start experiment
+-------------------------------
+Warm request:
+  curl -w "\nTotal time: %{time_total}s\n" -X POST http://localhost:5001/resize \
+    -H "Content-Type: application/json" \
+    -d '{"file_path":"/data/input/test_image.png",
+         "file_name":"test_image.png","width":200}'
+
+  Output:
+    processing_ms: 19.74
+    Total time: 0.024459s
+
+Restart container:
+  docker compose restart image-resizer
+
+First request after restart:
+  Output:
+    processing_ms: 38.13
+    Total time: 0.046249s
+
+Cold Start Results:
+  Warm request time:          0.024459s (24.4ms)
+  First request after restart: 0.046249s (46.2ms)
+  Difference:                  ~21.8ms slower

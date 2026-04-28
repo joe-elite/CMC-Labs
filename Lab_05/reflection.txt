@@ -1,0 +1,134 @@
+Lab 05 Reflection: Local Serverless Event-Driven Pipeline
+Student: Youssef Adel - SE2
+==========================================================
+
+OBSERVATIONS
+============
+
+1. The full pipeline worked end to end:
+   - test_image.png placed in /data/input
+   - event-source detected it within 2 seconds
+   - event published to Redis Stream with event_id
+   - event-router received and routed to both functions
+   - image-resizer resized 1200x800 to 300x200 successfully
+   - notifier logged the notification with timestamp
+   - output saved to /data/output/resized_test_image.png
+
+2. Event fan-out worked correctly:
+   - One event triggered TWO function calls
+   - image-resizer responded in 39.27ms
+   - notifier responded in 5.42ms
+   - Both received the same event payload
+
+3. Direct function test via curl:
+   - POST /resize returned status success
+   - Original size: 1200x800, new size: 200x133
+   - Processing time: 20ms
+
+4. Cold start experiment results:
+   - Warm request:              0.024459s (24.4ms)
+   - First request after restart: 0.046249s (46.2ms)
+   - Difference:                ~21.8ms slower
+   - Container needed time to initialize Flask before
+     serving the first request after restart
+
+REFLECTION QUESTIONS
+====================
+
+Q1: What is the event source in this lab?
+A: The event source is watcher.py running inside the
+   event-source container. It continuously monitors the
+   /data/input folder every 2 seconds. When a new image
+   file appears, it publishes an image.uploaded event
+   to the Redis Stream containing the file path, name,
+   and metadata.
+
+Q2: What is the event router?
+A: The event router is event_router.py running inside
+   the event-router container. It reads events from the
+   Redis Stream using xread and uses a routing table to
+   decide which function endpoints should receive each
+   event type. For image.uploaded events it routes to
+   both image-resizer and notifier.
+
+Q3: What are the event destinations?
+A: The event destinations are two containerized Flask
+   functions:
+   - image-resizer: receives the event via HTTP POST
+     to /resize, resizes the image using Pillow, and
+     saves the output to /data/output/
+   - notifier: receives the event via HTTP POST to
+     /notify and logs a notification message with
+     timestamp
+
+Q4: Why is this pipeline loosely coupled?
+A: The pipeline is loosely coupled because each component
+   only knows about the event format, not about other
+   components directly. The event-source does not know
+   who will consume its events. The router does not know
+   what the functions do internally. The functions do not
+   know where the events come from. Adding a new function
+   only requires adding a new route in the router without
+   changing any other component.
+
+Q5: What happened after restarting the image-resizer?
+A: After restarting, the first request took 0.046249s
+   compared to 0.024459s for the warm request. The
+   container needed time to initialize the Python
+   interpreter and Flask application before it could
+   serve requests. This caused the first request to
+   be approximately 21.8ms slower than subsequent ones.
+
+Q6: How is this similar to serverless cold start?
+A: In real serverless platforms like AWS Lambda, a cold
+   start occurs when a function is invoked for the first
+   time or after a period of inactivity. The platform
+   must initialize a new execution environment, load the
+   runtime, and load the function code before processing
+   the request. Our local experiment simulates this by
+   restarting the container, which forces Flask to
+   reinitialize before handling the first request.
+   The first request is slower just like a real cold start.
+
+Q7: What is missing compared to real cloud serverless?
+A: Several things are missing compared to real cloud
+   serverless platforms:
+   - Auto-scaling: our containers run as single instances
+     with no automatic scaling under load
+   - True ephemerality: our containers are long-running
+     Flask servers not truly ephemeral functions
+   - Billing per invocation: real FaaS charges per call
+   - Managed infrastructure: we manually manage containers
+   - Sandboxing and microVMs: real platforms use firecracker
+     or similar for strong isolation between invocations
+   - Provisioned concurrency: real platforms can pre-warm
+     functions to eliminate cold starts entirely
+   - Global distribution: real platforms run functions
+     in multiple regions automatically
+
+Q8: How could this pipeline be extended?
+A: The pipeline could be extended by:
+   - Adding an image moderation function that checks
+     uploaded images for inappropriate content using
+     an ML model before allowing them to be processed
+   - Adding an OCR function that extracts text from
+     images using tesseract and stores the results
+   - Adding an ML enrichment function that runs object
+     detection and tags images with detected objects
+   - Adding a database writer function that stores
+     event metadata and processing results in PostgreSQL
+   - All of these would simply be new routes added to
+     the event router with no changes to existing code
+
+KEY TAKEAWAY
+============
+
+This lab demonstrated that event-driven architectures
+can be built locally using simple open-source tools.
+Redis Streams acted as a reliable event bus. Containerized
+Flask services acted as lightweight functions. The routing
+table in event_router.py acted as the event router.
+The key insight is that the pattern matters more than
+the specific technology. The same concepts apply whether
+using local containers or managed cloud services like
+AWS Lambda, EventBridge, and S3 event notifications.
